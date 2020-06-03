@@ -24,10 +24,11 @@ interleaved = list(np.ravel(np.concatenate((slice_t[(num_slices // 2):, :],
 
 pprint(interleaved)
 
-for subj_dir in tqdm(os.listdir(args.directory)):
+for subj_dname in tqdm(os.listdir(args.directory)):
+    subj_dpath = op.join(args.directory, subj_dname)
     for i in range(1, 7):
-        fname = op.join(args.directory, 'rest-{}.json'.format(i))
-        corrected_fname = op.join(args.directory,
+        fname = op.join(subj_dpath, 'rest-{}.json'.format(i))
+        corrected_fname = op.join(subj_dpath,
                                   'rest-{}-corrected.json'.format(i))
         with open(fname, 'r') as f:
             js = json.load(f)
