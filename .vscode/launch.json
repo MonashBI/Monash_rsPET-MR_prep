@@ -1,0 +1,18 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Edit Side Cars",
+            "type": "python",
+            "request": "launch",
+            "program": "edit_json_side_cars.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Users/tclose/Desktop/sci-data"
+            ]
+        }
+    ]
+}
