@@ -26,6 +26,8 @@ pprint(interleaved)
 
 for subj_dname in tqdm(os.listdir(args.directory)):
     subj_dpath = op.join(args.directory, subj_dname)
+    if not op.isdir(subj_dpath):
+        continue
     for i in range(1, 7):
         fname = op.join(subj_dpath, 'rest-{}.json'.format(i))
         corrected_fname = op.join(subj_dpath,
