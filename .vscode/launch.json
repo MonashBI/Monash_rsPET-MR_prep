@@ -13,6 +13,19 @@
             "args": [
                 "/Users/tclose/Desktop/sci-data"
             ]
+        },
+        {
+            "name": "Python: Edit json",
+            "type": "python",
+            "request": "launch",
+            "program": "edit_json.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Volumes/ListMode/bids-sci_data",
+                "func",
+                "bold",
+                "-e", "TaskName", "rest"
+            ]
         }
     ]
 }
