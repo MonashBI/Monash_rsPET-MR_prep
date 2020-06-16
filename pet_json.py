@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import os
 import os.path as op
+import re
 import json
 import csv
+import subprocess as sp
+from collections import defaultdict
 from argparse import ArgumentParser
 from natsort import natsorted
 import pydicom
@@ -101,44 +104,75 @@ dicom_fields = {
     'ScanDate': ('0008', '0022'),
     'ScanStart': ('0008', '0031'),
     'TimeZero': ('0008', '0031'),
-    'FrameTimesStart': ('0008', '0032'),
 }
 
 
-#'ImageVoxelSize': (('0028', '0030'), ('0018', '0050')),
-
-with open(args.demographics) as f:
-    demographics_csv = csv.reader(f)
-    
-
-participants = pandas.read_csv(op.join(args.bids_dir, 'participants.tsv'),
-                               delimiter='\t')
+FRAME_TIME_FIELD = ('0008', '0032')  # 'FrameTimesStart'
+INPLANE_RES_FIELD = ('0028', '0030')
+SLICE_THICK_FIELD = ('0018', '0050')
 
 
-for i, subject_id in tqdm(enumerate(subject_ids)):
+def get_dcm_field(fname, field):
+    line = sp.check_output('dcmdump {} | grep ({},{})'.format(fname, *field),
+                           shell=True)
+    val = re.match(r'.*\[(.*)\]', line).group(1)
+    try:
+        val = int(val)
+    except ValueError:
+        try:
+            val = float(val)
+        except ValueError:
+            pass
+    return val
+
+
+demographic_fields = {'InjectedRadioactivity': 'FDG Dose (MBq)',
+                      'InjectionStart': 'Infusion Start Time (Clock)',
+                      'BloodDiscreteDensity': 'Haemoglobin g/dl'}
+
+participants_fname = op.join(args.bids_dir, 'participants-new.tsv')
+
+demo_for_json = defaultdict(dict)
+
+with open(args.demographics) as f, open(participants_fname, 'w') as f2:
+    reader = csv.reader(f)
+    writer = csv.writer(f2, delimiter='\t')
+    full_col_names = next(reader)
+    col_names = next(reader)
+    writer.writerow(['participant_id'] + [c for c in col_names if c])
+    for i, row in enumerate(reader):
+        writer.writerow(['sub-{:02}'.format(i)]
+                        + [c for n, c in zip(col_names, row) if n])
+        row_dict = dict(zip(full_col_names, row))
+        for bids_name, csv_name in demographic_fields.items():
+            demo_for_json[i][bids_name] = row_dict[csv_name]
+
+
+for i, subject_id in tqdm(enumerate(subject_ids, start=1),
+                          "processing subjects"):
     subj_dir = op.join(args.bids_dir, 'sub-{:02}'.format(i), 'pet')
     dicom_subj_dir = op.join(args.dicom_dir, str(subject_id))
-    for run in range(1, 5):
+    for run in tqdm(range(1, 5), "processing runs"):
         fpath = op.join(subj_dir,
-                        'sub-{:02}_task-rest_run-{}_pet.nii.gz'.format(i, run))
+                        'sub-{:02}_task-rest_run-{}_pet.json'.format(i, run))
         with open(fpath) as f:
             js = json.load(f)
         js.update(fixed_entries)
         dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
-        frame_times = []
-        for dcm_fname in natsorted(d for d in os.listdir(dicom_run_dir)
-                                   if d.endswith('.dcm')):
-            with open(dcm_fname) as f:
-                dcm = pydicom.dcmread(f)
-            if not frame_times:
-                js['ImageDecayCorrectionTime'] = dcm[('0008', '0031')]
-                js['ScanDate'] = dcm[('0008', '0022')]
-                js['ScanStart'] = dcm[('0008', '0031')]
-                js['TimeZero'] = dcm[('0008', '0031')]
-                in_plane_res = dcm[('0028', '0030')].split('/')
-                slice_thick = dcm[('0018', '0050')]
-                js['ImageVoxelSize'] = in_plane_res + [slice_thick]
-            frame_times.append(dcm[('0008', '0032')])
+        js['FrameTimesStart'] = []
+        for dcm_fname in tqdm(natsorted(d for d in os.listdir(dicom_run_dir)
+                                        if d.endswith('.dcm')),
+                              "processing dicoms"):
+            fpath = op.join(dicom_run_dir, dcm_fname)
+            if not js['FrameTimesStart']:
+                for bids_name, dcm_field in dicom_fields.items():
+                    js[bids_name] = get_dcm_field(fpath, dcm_field)
+                js['ImageVoxelSize'] = get_dcm_field(
+                    fpath, INPLANE_RES_FIELD).split('\\') + get_dcm_field(
+                        fpath, SLICE_THICK_FIELD)
+            js['FrameTimesStart'].append(get_dcm_field(fpath,
+                                                       FRAME_TIME_FIELD))
+        js.update(demo_for_json[i])
         print(json.dumps(js), indent=4)
         # with open(fpath, 'w') as f:
         #     json.dump(js, f, indent=4)

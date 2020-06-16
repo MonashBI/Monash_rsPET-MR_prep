@@ -26,6 +26,18 @@
                 "bold",
                 "-e", "TaskName", "rest"
             ]
+        },
+        {
+            "name": "Python: PET json",
+            "type": "python",
+            "request": "launch",
+            "program": "pet_json.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/Volumes/ExtraStore/bids-sci_data",
+                "/Volumes/ExtraStore/dicom-sci_data",
+                "${workspaceFolder}/demographics.csv"
+            ]
         }
     ]
 }
