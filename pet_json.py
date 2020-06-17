@@ -16,6 +16,9 @@ parser = ArgumentParser()
 parser.add_argument('bids_dir', help="directory containing converted NIfTIs")
 parser.add_argument('dicom_dir', help="directory containing converted dicoms")
 parser.add_argument('demographics', help='The demographics file')
+parser.add_argument('--just_participants', '-p', action='store_true',
+                    default=False,
+                    help="Just the participants file not the PET JSONs")
 args = parser.parse_args()
 
 subject_ids = [303, 305, 306, 308, 309, 310, 311, 312, 313, 314, 315, 316, 318,
@@ -76,30 +79,6 @@ fixed_entries = {
     'BloodDiscreteDensity': 'g/dl'
 }
 
-# {
-# Sex	M / F
-# Handedness(Self Report)	Hand dominance - self report
-# Years of Educationa	Calculated as formal education of 6 months or more. Starts from the first year of primary / elementary school onwards. Note that Australian education system includes 13 years of school: 7 years primary / elementary, 6 years high school.
-# Highest Level Completed b	Calculated as the highest level of formal education completed(i.e., does not include uncompleted education or education currently undertaken). In Australia, 'technical school' is education undertaken in the TAFE / vocational education sector
-# English as first language?	Yes / No. For no - first language is reported
-# Visual impairment - self report	Yes / No. Further information included for Yes. Any kind of vision impairment including wearing reading glasses
-# Personal history of mental illness - self report	Self report of whether the person has had a current or past Axis I psychiatric condition
-# Personal history of mental illness - diagnosis or treatment	Whether the person has received a diagnosis for any Axis I psychiatric condition
-# History of cadiovascular disease	Yes / No
-# History of diabetes	Yes / No
-# Regular medication	Yes / No. For yes - further information included
-# Current smoker	Yes / No
-# Previous smoker	Yes / No
-# Average alcohol consumption - self report	Self report alcohol consumption. Includes number of days per week / month the person drinks, and average number of standard drinks per drinking session
-# Used recreational drugs in last 6 months	Yes / No
-# Drugs - specify	details of drug use
-# Edinburgh Handedness: Edinburgh Handedness Inventory
-# scores provided for left and right separately
-# CESD - R	Centre for Epidemiological Studies Depression Inventory - Revised total score
-# Haemoglobin g / dl
-# FDG Dose(MBq)
-# Infusion Start Time(Clock)
-# }
 
 dicom_fields = {
     'ImageDecayCorrectionTime': ('0008', '0031'),
@@ -162,40 +141,41 @@ with open(args.demographics) as f, open(participants_fname, 'w') as f2:
         for bids_name, csv_name in demographic_fields.items():
             demo_for_json[i][bids_name] = row_dict[csv_name]
 
-
-for i, subject_id in tqdm(enumerate(subject_ids, start=1),
-                          "processing subjects"):
-    subj_dir = op.join(args.bids_dir, 'sub-{:02}'.format(i), 'pet')
-    dicom_subj_dir = op.join(args.dicom_dir, str(subject_id))
-    with open(op.join(subj_dir,
-                      'sub-{:02}_task-rest_run-1_pet.json'.format(i))) as f:
-        js = json.load(f)
-    for field in to_delete:
-        del js[field]
-    js.update(fixed_entries)
-    js['FrameTimesStart'] = []
-    # Only need to sample every 127 in order to get the frame times
-    dcm_fpaths = []
-    for run in range(1, 5):
-        dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
-        dcm_files = natsorted(op.join(dicom_run_dir, d)
-                              for d in os.listdir(dicom_run_dir)
-                              if d.endswith('.dcm'))
-        dcm_fpaths.extend(op.join(dicom_run_dir, f) for f in dcm_files[::127])
-    for fpath in tqdm(dcm_fpaths, "processing dicoms"):
-        if not js['FrameTimesStart']:
-            for bids_name, dcm_field in dicom_fields.items():
-                js[bids_name] = get_dcm_field(fpath, dcm_field)
-            scan_start = datetime.strptime(js['ScanStart'], '%H:%M:%S')
-            js['ImageVoxelSize'] = [
-                float(i) for i in str(get_dcm_field(
-                    fpath, INPLANE_RES_FIELD)).split('\\')] + [
-                get_dcm_field(fpath, SLICE_THICK_FIELD)]
-        frame_start = get_dcm_field(fpath, FRAME_TIME_FIELD)
-        frame_start_delta = (datetime.strptime(frame_start, '%H:%M:%S')
-                             - scan_start).seconds
-        js['FrameTimesStart'].append(frame_start_delta)
-    js.update(demo_for_json[i])
-    with open(op.join(subj_dir,
-                      'sub-{:02}_task-rest_pet.json'.format(i)), 'w') as f:
-        json.dump(js, f, indent=4)
+if not args.just_participants:
+    for i, subject_id in tqdm(enumerate(subject_ids, start=1),
+                            "processing subjects"):
+        subj_dir = op.join(args.bids_dir, 'sub-{:02}'.format(i), 'pet')
+        dicom_subj_dir = op.join(args.dicom_dir, str(subject_id))
+        with open(op.join(subj_dir,
+                        'sub-{:02}_task-rest_run-1_pet.json'.format(i))) as f:
+            js = json.load(f)
+        for field in to_delete:
+            del js[field]
+        js.update(fixed_entries)
+        js['FrameTimesStart'] = []
+        # Only need to sample every 127 in order to get the frame times
+        dcm_fpaths = []
+        for run in range(1, 5):
+            dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
+            dcm_files = natsorted(op.join(dicom_run_dir, d)
+                                for d in os.listdir(dicom_run_dir)
+                                if d.endswith('.dcm'))
+            dcm_fpaths.extend(op.join(dicom_run_dir, f)
+                              for f in dcm_files[::127])
+        for fpath in tqdm(dcm_fpaths, "processing dicoms"):
+            if not js['FrameTimesStart']:
+                for bids_name, dcm_field in dicom_fields.items():
+                    js[bids_name] = get_dcm_field(fpath, dcm_field)
+                scan_start = datetime.strptime(js['ScanStart'], '%H:%M:%S')
+                js['ImageVoxelSize'] = [
+                    float(i) for i in str(get_dcm_field(
+                        fpath, INPLANE_RES_FIELD)).split('\\')] + [
+                    get_dcm_field(fpath, SLICE_THICK_FIELD)]
+            frame_start = get_dcm_field(fpath, FRAME_TIME_FIELD)
+            frame_start_delta = (datetime.strptime(frame_start, '%H:%M:%S')
+                                - scan_start).seconds
+            js['FrameTimesStart'].append(frame_start_delta)
+        js.update(demo_for_json[i])
+        with open(op.join(subj_dir,
+                        'sub-{:02}_task-rest_pet.json'.format(i)), 'w') as f:
+            json.dump(js, f, indent=4)
