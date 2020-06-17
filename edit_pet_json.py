@@ -94,7 +94,8 @@ SLICE_THICK_FIELD = ('0018', '0050')
 
 
 def get_dcm_field(fname, field):
-    line = sp.check_output("dcmdump {} 2>/dev/null | grep '({},{})'".format(fname, *field),
+    line = sp.check_output(("dcmdump {} 2>/dev/null | grep '({},{})'"
+                            .format(fname, *field)),
                            shell=True).decode('utf-8')
     val = re.match(r'.*\[(.*)\]', line).group(1)
     date_match = re.match(r'(201\d)(\d\d)(\d\d)', val)
@@ -143,14 +144,14 @@ with open(args.demographics) as f, open(participants_fname, 'w') as f2:
 
 if not args.just_participants:
     for i, subject_id in tqdm(enumerate(subject_ids, start=1),
-                            "processing subjects"):
+                              "processing subjects"):
         subj_dir = op.join(args.bids_dir, 'sub-{:02}'.format(i), 'pet')
         dicom_subj_dir = op.join(args.dicom_dir, str(subject_id))
-        with open(op.join(subj_dir,
-                        'sub-{:02}_task-rest_run-1_pet.json'.format(i))) as f:
+        with open(op.join(subj_dir, ('sub-{:02}_task-rest_run-1_pet.json'
+                                     .format(i)))) as f:
             js = json.load(f)
-        for field in to_delete:
-            del js[field]
+        for field_name in to_delete:
+            del js[field_name]
         js.update(fixed_entries)
         js['FrameTimesStart'] = []
         # Only need to sample every 127 in order to get the frame times
@@ -158,8 +159,8 @@ if not args.just_participants:
         for run in range(1, 5):
             dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
             dcm_files = natsorted(op.join(dicom_run_dir, d)
-                                for d in os.listdir(dicom_run_dir)
-                                if d.endswith('.dcm'))
+                                  for d in os.listdir(dicom_run_dir)
+                                  if d.endswith('.dcm'))
             dcm_fpaths.extend(op.join(dicom_run_dir, f)
                               for f in dcm_files[::127])
         for fpath in tqdm(dcm_fpaths, "processing dicoms"):
@@ -173,7 +174,7 @@ if not args.just_participants:
                     get_dcm_field(fpath, SLICE_THICK_FIELD)]
             frame_start = get_dcm_field(fpath, FRAME_TIME_FIELD)
             frame_start_delta = (datetime.strptime(frame_start, '%H:%M:%S')
-                                - scan_start).seconds
+                                 - scan_start).seconds
             js['FrameTimesStart'].append(frame_start_delta)
         js.update(demo_for_json[i])
         with open(op.join(subj_dir,
