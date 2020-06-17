@@ -3,6 +3,7 @@ import os
 import os.path as op
 import re
 import json
+from datetime import datetime
 import csv
 import subprocess as sp
 from collections import defaultdict
@@ -25,6 +26,8 @@ fixed_entries = {
     'Modality': 'petmr',
     # 'Manufacturer': 'Siemens',
     # 'ManufacturersModelName': 'Biograph_mMR',
+    "InstitutionName": "Monash University",
+    "InstitutionalDepartmentName": "Biomedical Imaging",
     'BodyPart': 'brain',
     'Unit': 'Bq/ml',
     'TracerName': 'FDG',
@@ -54,7 +57,7 @@ fixed_entries = {
     'ImageOrientation': '3D',
     'ReconMatrixSize': 344,
     'ReconMethodName': '3D Iterative',
-    'ReconMethodParameterLabels': ['Subsets', 'iterations', 'zoom'],
+    'ReconMethodParameterLabels': ['subsets', 'iterations', 'zoom'],
     'ReconMethodParameterUnit': ['none', 'none', 'none'],
     'ReconMethodParameterValues': [21, 3, 1],
     'ReconMethodImplementationVersion': 'Syngo VB20 P',
@@ -137,12 +140,14 @@ demographic_fields = {'InjectedRadioactivity': 'FDG Dose (MBq)',
                       'InjectionStart': 'Infusion Start Time (Clock)',
                       'BloodDiscreteDensity': 'Haemoglobin g/dl'}
 
-participants_fname = op.join(args.bids_dir, 'participants-new.tsv')
+participants_fname = op.join(args.bids_dir, 'participants.tsv')
 
 demo_for_json = defaultdict(dict)
 
 
-to_delete = ["SeriesDescription", "ProtocolName", "SliceTiming"]
+to_delete = ["SeriesDescription", "ProtocolName", "SliceTiming",
+             "MultibandAccelerationFactor", "PulseSequenceDetails",
+             "PartialFourier"]
 
 with open(args.demographics) as f, open(participants_fname, 'w') as f2:
     reader = csv.reader(f)
@@ -150,7 +155,7 @@ with open(args.demographics) as f, open(participants_fname, 'w') as f2:
     full_col_names = next(reader)
     col_names = next(reader)
     writer.writerow(['participant_id'] + [c for c in col_names if c])
-    for i, row in enumerate(reader):
+    for i, row in enumerate(reader, start=1):
         writer.writerow(['sub-{:02}'.format(i)]
                         + [c for n, c in zip(col_names, row) if n])
         row_dict = dict(zip(full_col_names, row))
@@ -181,12 +186,15 @@ for i, subject_id in tqdm(enumerate(subject_ids, start=1),
         if not js['FrameTimesStart']:
             for bids_name, dcm_field in dicom_fields.items():
                 js[bids_name] = get_dcm_field(fpath, dcm_field)
+            scan_start = datetime.strptime(js['ScanStart'], '%H:%M:%S')
             js['ImageVoxelSize'] = [
                 float(i) for i in str(get_dcm_field(
                     fpath, INPLANE_RES_FIELD)).split('\\')] + [
                 get_dcm_field(fpath, SLICE_THICK_FIELD)]
-        js['FrameTimesStart'].append(get_dcm_field(fpath,
-                                                   FRAME_TIME_FIELD))
+        frame_start = get_dcm_field(fpath, FRAME_TIME_FIELD)
+        frame_start_delta = (datetime.strptime(frame_start, '%H:%M:%S')
+                             - scan_start).seconds
+        js['FrameTimesStart'].append(frame_start_delta)
     js.update(demo_for_json[i])
     with open(op.join(subj_dir,
                       'sub-{:02}_task-rest_pet.json'.format(i)), 'w') as f:
