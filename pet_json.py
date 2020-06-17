@@ -152,27 +152,29 @@ for i, subject_id in tqdm(enumerate(subject_ids, start=1),
                           "processing subjects"):
     subj_dir = op.join(args.bids_dir, 'sub-{:02}'.format(i), 'pet')
     dicom_subj_dir = op.join(args.dicom_dir, str(subject_id))
-    for run in tqdm(range(1, 5), "processing runs"):
-        fpath = op.join(subj_dir,
-                        'sub-{:02}_task-rest_run-{}_pet.json'.format(i, run))
-        with open(fpath) as f:
-            js = json.load(f)
-        js.update(fixed_entries)
+    with open(op.join(subj_dir,
+                      'sub-{:02}_task-rest_run-1_pet.json'.format(i))) as f:
+        js = json.load(f)
+    js.update(fixed_entries)
+    js['FrameTimesStart'] = []
+    # Only need to sample every 127 in order to get the frame times
+    dcm_fpaths = []
+    for run in range(1, 5):
         dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
-        js['FrameTimesStart'] = []
-        for dcm_fname in tqdm(natsorted(d for d in os.listdir(dicom_run_dir)
-                                        if d.endswith('.dcm')),
-                              "processing dicoms"):
-            fpath = op.join(dicom_run_dir, dcm_fname)
-            if not js['FrameTimesStart']:
-                for bids_name, dcm_field in dicom_fields.items():
-                    js[bids_name] = get_dcm_field(fpath, dcm_field)
-                js['ImageVoxelSize'] = get_dcm_field(
-                    fpath, INPLANE_RES_FIELD).split('\\') + get_dcm_field(
-                        fpath, SLICE_THICK_FIELD)
-            js['FrameTimesStart'].append(get_dcm_field(fpath,
-                                                       FRAME_TIME_FIELD))
-        js.update(demo_for_json[i])
-        print(json.dumps(js), indent=4)
-        # with open(fpath, 'w') as f:
-        #     json.dump(js, f, indent=4)
+        dcm_files = natsorted(op.join(dicom_run_dir, f)
+                              for d in os.listdir(dicom_run_dir)
+                              if d.endswith('.dcm'))
+        dcm_fpaths.append(op.join(dicom_run_dir, f) for f in dcm_files[::127])
+    for fpath in tqdm(dcm_fpaths, "processing dicoms"):
+        if not js['FrameTimesStart']:
+            for bids_name, dcm_field in dicom_fields.items():
+                js[bids_name] = get_dcm_field(fpath, dcm_field)
+            js['ImageVoxelSize'] = get_dcm_field(
+                fpath, INPLANE_RES_FIELD).split('\\') + get_dcm_field(
+                    fpath, SLICE_THICK_FIELD)
+        js['FrameTimesStart'].append(get_dcm_field(fpath,
+                                                   FRAME_TIME_FIELD))
+    js.update(demo_for_json[i])
+    with open(op.join(subj_dir,
+                      'sub-{:02}_task-rest_pet.json'.format(i)), 'w') as f:
+        json.dump(js, f, indent=4)
