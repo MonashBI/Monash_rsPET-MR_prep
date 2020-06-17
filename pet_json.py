@@ -8,7 +8,6 @@ import subprocess as sp
 from collections import defaultdict
 from argparse import ArgumentParser
 from natsort import natsorted
-import pydicom
 from tqdm import tqdm
 
 
@@ -113,16 +112,24 @@ SLICE_THICK_FIELD = ('0018', '0050')
 
 
 def get_dcm_field(fname, field):
-    line = sp.check_output('dcmdump {} | grep ({},{})'.format(fname, *field),
-                           shell=True)
+    line = sp.check_output("dcmdump {} | grep '({},{})'".format(fname, *field),
+                           shell=True).decode('utf-8')
     val = re.match(r'.*\[(.*)\]', line).group(1)
-    try:
-        val = int(val)
-    except ValueError:
-        try:
-            val = float(val)
-        except ValueError:
-            pass
+    date_match = re.match(r'(201\d)(\d\d)(\d\d)', val)
+    if date_match:
+        val = ':'.join(date_match.groups())
+    else:
+        time_match = re.match(r'((?:1|2)\d)(\d\d)(\d\d)', val)
+        if time_match:
+            val = ':'.join(time_match.groups())
+        else:
+            try:
+                val = int(val)
+            except ValueError:
+                try:
+                    val = float(val)
+                except ValueError:
+                    pass
     return val
 
 
@@ -133,6 +140,9 @@ demographic_fields = {'InjectedRadioactivity': 'FDG Dose (MBq)',
 participants_fname = op.join(args.bids_dir, 'participants-new.tsv')
 
 demo_for_json = defaultdict(dict)
+
+
+to_delete = ["SeriesDescription", "ProtocolName", "SliceTiming"]
 
 with open(args.demographics) as f, open(participants_fname, 'w') as f2:
     reader = csv.reader(f)
@@ -155,23 +165,26 @@ for i, subject_id in tqdm(enumerate(subject_ids, start=1),
     with open(op.join(subj_dir,
                       'sub-{:02}_task-rest_run-1_pet.json'.format(i))) as f:
         js = json.load(f)
+    for field in to_delete:
+        del js[field]
     js.update(fixed_entries)
     js['FrameTimesStart'] = []
     # Only need to sample every 127 in order to get the frame times
     dcm_fpaths = []
     for run in range(1, 5):
         dicom_run_dir = op.join(dicom_subj_dir, 'pet-{}'.format(run))
-        dcm_files = natsorted(op.join(dicom_run_dir, f)
+        dcm_files = natsorted(op.join(dicom_run_dir, d)
                               for d in os.listdir(dicom_run_dir)
                               if d.endswith('.dcm'))
-        dcm_fpaths.append(op.join(dicom_run_dir, f) for f in dcm_files[::127])
+        dcm_fpaths.extend(op.join(dicom_run_dir, f) for f in dcm_files[::127])
     for fpath in tqdm(dcm_fpaths, "processing dicoms"):
         if not js['FrameTimesStart']:
             for bids_name, dcm_field in dicom_fields.items():
                 js[bids_name] = get_dcm_field(fpath, dcm_field)
-            js['ImageVoxelSize'] = get_dcm_field(
-                fpath, INPLANE_RES_FIELD).split('\\') + get_dcm_field(
-                    fpath, SLICE_THICK_FIELD)
+            js['ImageVoxelSize'] = [
+                float(i) for i in str(get_dcm_field(
+                    fpath, INPLANE_RES_FIELD)).split('\\')] + [
+                get_dcm_field(fpath, SLICE_THICK_FIELD)]
         js['FrameTimesStart'].append(get_dcm_field(fpath,
                                                    FRAME_TIME_FIELD))
     js.update(demo_for_json[i])
