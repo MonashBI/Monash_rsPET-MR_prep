@@ -94,7 +94,7 @@ SLICE_THICK_FIELD = ('0018', '0050')
 
 
 def get_dcm_field(fname, field):
-    line = sp.check_output("dcmdump {} | grep '({},{})'".format(fname, *field),
+    line = sp.check_output("dcmdump {} 2>/dev/null | grep '({},{})'".format(fname, *field),
                            shell=True).decode('utf-8')
     val = re.match(r'.*\[(.*)\]', line).group(1)
     date_match = re.match(r'(201\d)(\d\d)(\d\d)', val)
