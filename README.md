@@ -14,8 +14,9 @@ Cite this paper:
 
 ### Axiually Information
 
-demographics.csv: It contains the de-identified demographic information of all the subjects
-scan-protocol.pdf: the scan protocol of the Siemens biograph mMR scanner (software version: B20P)
+**demographics.csv**: It contains the de-identified demographic information of all the subjects
+
+**scan-protocol.pdf**: the scan protocol of the Siemens biograph mMR scanner (software version: B20P)
 
 ### Scripts
 
